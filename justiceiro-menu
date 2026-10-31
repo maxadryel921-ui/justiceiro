@@ -1,8 +1,7 @@
 --[[
-    Justiceiro Menu - VERSÃO PREMIUM (CORRIGIDA)
-    - UI atualizando cores ON/OFF corretamente
-    - Auto Farm deslizando sem parar (Cache de itens)
-    - Personagem fica em pé enquanto voa
+    Justiceiro Menu - VERSÃO DEFINITIVA (Mobile/Bluestacks)
+    - UI atualizando cores instantaneamente (sem atraso)
+    - Farm otimizado com sistema de física correto (não trava)
 ]]
 
 local Players = game:GetService("Players")
@@ -32,28 +31,13 @@ local CORES = {
 }
 
 local state = {
-    espAtivo        = false,
-    mostrarInnocent = true,
-    mostrarSheriff  = true,
-    mostrarMurderer = true,
-    mostrarNomes    = true,
-    antiFlingAtivo  = true,
-    farmAtivo       = false,
-    vooAtivo        = false,
-    veloFarm        = 25,
-    noclipAtivo     = false,
-    godModeAtivo    = false,
-    invisivelAtivo  = false,
-    hitboxAtivo     = false,
-    abaAtual        = "PLAYER",
+    espAtivo = false, farmAtivo = false, vooAtivo = false,
+    veloFarm = 25, noclipAtivo = false, godModeAtivo = false,
+    invisivelAtivo = false, hitboxAtivo = false, antiFlingAtivo = true
 }
 
-local destaques = {}
-local billboards = {}
-local hitboxesCriadas = {}
-local alvoAtual = nil
-local bodyVelocity = nil
-local cacheItensFarm = {} -- Tabela para guardar os doces (evita travar)
+local destaques, billboards, hitboxesCriadas, cacheItensFarm = {}, {}, {}, {}
+local alvoAtual, bodyVelocity = nil, nil
 
 -- ================= HELPERS =================
 local function novo(classe, props, parent)
@@ -62,20 +46,12 @@ local function novo(classe, props, parent)
     if parent then o.Parent = parent end
     return o
 end
-
-local function cantos(obj, r)
-    novo("UICorner", { CornerRadius = UDim.new(0, r or 4) }, obj)
-end
-
-local function stroke(obj, cor, trans)
-    novo("UIStroke", { Color = cor or Color3.fromRGB(40, 40, 40), Thickness = 1, Transparency = trans or 0 }, obj)
-end
+local function cantos(obj, r) novo("UICorner", { CornerRadius = UDim.new(0, r or 4) }, obj) end
+local function stroke(obj, cor, trans) novo("UIStroke", { Color = cor or Color3.fromRGB(40, 40, 40), Thickness = 1, Transparency = trans or 0 }, obj) end
 
 local function nomeNaLista(nome, lista)
     for _, n in ipairs(lista) do
-        if string.find(string.lower(nome), string.lower(n), 1, true) then
-            return true
-        end
+        if string.find(string.lower(nome), string.lower(n), 1, true) then return true end
     end
     return false
 end
@@ -92,30 +68,26 @@ local function detectarPapel(jogador)
     if char then
         for _, obj in ipairs(char:GetChildren()) do
             if obj:IsA("Tool") then
-                local p = classificarTool(obj)
-                if p then return p end
+                local p = classificarTool(obj); if p then return p end
             end
         end
     end
     if backpack then
         for _, obj in ipairs(backpack:GetChildren()) do
             if obj:IsA("Tool") then
-                local p = classificarTool(obj)
-                if p then return p end
+                local p = classificarTool(obj); if p then return p end
             end
         end
     end
     return "Innocent"
 end
 
--- ================= SISTEMA DE ARRASTAR =================
+-- ================= UI (ARRastar e Abas) =================
 local function tornarArrastavel(frame, dragArea)
     local dragging, dragStart, startPos = false, nil, nil
     dragArea.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
+            dragging = true; dragStart = input.Position; startPos = frame.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
@@ -125,454 +97,218 @@ local function tornarArrastavel(frame, dragArea)
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
     end)
 end
 
--- ================= UI PRINCIPAL =================
 local screenGui = novo("ScreenGui", { Name = "JusticeiroMenu", ResetOnSpawn = false, IgnoreGuiInset = true }, PlayerGui)
-
-local painel = novo("Frame", {
-    Size = UDim2.new(0, 260, 0, 0),
-    Position = UDim2.new(0, 15, 0.1, 0),
-    BackgroundColor3 = CORES.Fundo,
-    AutomaticSize = Enum.AutomaticSize.Y,
-}, screenGui)
-cantos(painel, 6)
-stroke(painel, Color3.fromRGB(40, 40, 40))
+local painel = novo("Frame", { Size = UDim2.new(0, 260, 0, 0), Position = UDim2.new(0, 15, 0.1, 0), BackgroundColor3 = CORES.Fundo, AutomaticSize = Enum.AutomaticSize.Y }, screenGui)
+cantos(painel, 6); stroke(painel, Color3.fromRGB(40, 40, 40))
 
 local header = novo("Frame", { Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1 }, painel)
 tornarArrastavel(painel, header)
-
-novo("TextLabel", {
-    Size = UDim2.new(0.5, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0),
-    BackgroundTransparency = 1, Text = "Justiceiro",
-    TextColor3 = CORES.Texto, Font = Enum.Font.GothamBlack, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left,
-}, header)
-
-local btnMinimizar = novo("TextButton", {
-    Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -32, 0, 7),
-    BackgroundColor3 = CORES.Botao, Text = "—",
-    TextColor3 = CORES.Texto, Font = Enum.Font.GothamBold, TextSize = 14,
-}, header)
+novo("TextLabel", { Size = UDim2.new(0.5, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = "Justiceiro", TextColor3 = CORES.Texto, Font = Enum.Font.GothamBlack, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left }, header)
+local btnMinimizar = novo("TextButton", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -32, 0, 7), BackgroundColor3 = CORES.Botao, Text = "—", TextColor3 = CORES.Texto, Font = Enum.Font.GothamBold, TextSize = 14 }, header)
 cantos(btnMinimizar, 4)
 
-local conteudo = novo("Frame", {
-    Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 0, 40),
-    BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y,
-}, painel)
+local conteudo = novo("Frame", { Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 0, 40), BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y }, painel)
 novo("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, conteudo)
 novo("UIPadding", { PaddingBottom = UDim.new(0, 10) }, conteudo)
 
 local minimizado = false
 btnMinimizar.MouseButton1Click:Connect(function()
-    minimizado = not minimizado
-    conteudo.Visible = not minimizado
+    minimizado = not minimizado; conteudo.Visible = not minimizado
     painel.Size = minimizado and UDim2.new(0, 260, 0, 40) or UDim2.new(0, 260, 0, 0)
     btnMinimizar.Text = minimizado and "+" or "—"
 end)
 
--- ================= ABAS =================
 local frameAbas = novo("Frame", { Size = UDim2.new(1, -20, 0, 32), BackgroundTransparency = 1, LayoutOrder = 1 }, conteudo)
 novo("UIListLayout", { Padding = UDim.new(0, 4), FillDirection = Enum.FillDirection.Horizontal }, frameAbas)
-
 local function criarAba(texto, ordem)
-    local btn = novo("TextButton", {
-        Size = UDim2.new(0.5, -2, 1, 0), BackgroundColor3 = CORES.Botao,
-        Text = texto, TextColor3 = CORES.TextoOff, Font = Enum.Font.GothamBold, TextSize = 12,
-        LayoutOrder = ordem,
-    }, frameAbas)
-    cantos(btn, 4)
-    return btn
+    local btn = novo("TextButton", { Size = UDim2.new(0.5, -2, 1, 0), BackgroundColor3 = CORES.Botao, Text = texto, TextColor3 = CORES.TextoOff, Font = Enum.Font.GothamBold, TextSize = 12, LayoutOrder = ordem }, frameAbas)
+    cantos(btn, 4); return btn
 end
+local btnAbaPlayer, btnAbaFarm = criarAba("PLAYER", 1), criarAba("FARM", 2)
 
-local btnAbaPlayer = criarAba("PLAYER", 1)
-local btnAbaFarm = criarAba("FARM", 2)
-
--- ================= CONTAINER PLAYER =================
 local containerPlayer = novo("Frame", { Size = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, LayoutOrder = 2, AutomaticSize = Enum.AutomaticSize.Y }, conteudo)
 novo("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, containerPlayer)
+local containerFarm = novo("Frame", { Size = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, LayoutOrder = 2, AutomaticSize = Enum.AutomaticSize.Y, Visible = false }, conteudo)
+novo("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, containerFarm)
 
-local function criarBotaoPlayer(texto, ordem, callback)
-    local btn = novo("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = CORES.Botao,
-        Text = texto, TextColor3 = CORES.Texto, Font = Enum.Font.GothamBlack, TextSize = 13, LayoutOrder = ordem,
-    }, containerPlayer)
-    cantos(btn, 4)
-    btn.MouseButton1Click:Connect(callback)
+local function criarBotao(parent, texto, ordem, callback)
+    local btn = novo("TextButton", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = CORES.Botao, Text = texto, TextColor3 = CORES.Texto, Font = Enum.Font.GothamBlack, TextSize = 13, LayoutOrder = ordem }, parent)
+    cantos(btn, 4); btn.MouseButton1Click:Connect(callback)
     btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(40, 40, 40) }):Play() end)
     btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundColor3 = CORES.Botao }):Play() end)
     return btn
 end
 
-local btnESP = criarBotaoPlayer("ESP: OFF", 1, function()
+-- ================= BOTÕES PLAYER =================
+local btnESP = criarBotao(containerPlayer, "ESP: OFF", 1, function()
     state.espAtivo = not state.espAtivo
     btnESP.Text = "ESP: " .. (state.espAtivo and "ON" or "OFF")
     btnESP.TextColor3 = state.espAtivo and CORES.Neon or CORES.Texto
-    atualizarTudo()
 end)
-
-local btnNoclip = criarBotaoPlayer("Noclip: OFF", 2, function()
+local btnNoclip = criarBotao(containerPlayer, "Noclip: OFF", 2, function()
     state.noclipAtivo = not state.noclipAtivo
     btnNoclip.Text = "Noclip: " .. (state.noclipAtivo and "ON" or "OFF")
     btnNoclip.TextColor3 = state.noclipAtivo and CORES.Neon or CORES.Texto
 end)
-
-local btnGodMode = criarBotaoPlayer("God Mode: OFF", 3, function()
+local btnGodMode = criarBotao(containerPlayer, "God Mode: OFF", 3, function()
     state.godModeAtivo = not state.godModeAtivo
     btnGodMode.Text = "God Mode: " .. (state.godModeAtivo and "ON" or "OFF")
     btnGodMode.TextColor3 = state.godModeAtivo and CORES.Neon or CORES.Texto
 end)
-
-local btnInvisivel = criarBotaoPlayer("Invisible: OFF", 4, function()
+local btnInvisivel = criarBotao(containerPlayer, "Invisible: OFF", 4, function()
     state.invisivelAtivo = not state.invisivelAtivo
     btnInvisivel.Text = "Invisible: " .. (state.invisivelAtivo and "ON" or "OFF")
     btnInvisivel.TextColor3 = state.invisivelAtivo and CORES.Neon or CORES.Texto
     local char = LocalPlayer.Character
-    if char then
-        for _, parte in ipairs(char:GetDescendants()) do
-            if parte:IsA("BasePart") or parte:IsA("Decal") then
-                if state.invisivelAtivo then parte.Transparency = 1
-                else parte.Transparency = (parte.Name == "HumanoidRootPart") and 1 or 0 end
-            end
-        end
-    end
+    if char then for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") or p:IsA("Decal") then p.Transparency = state.invisivelAtivo and 1 or (p.Name=="HumanoidRootPart" and 1 or 0) end end end
 end)
-
-local btnHitbox = criarBotaoPlayer("Hitbox Expander: OFF", 5, function()
+local btnHitbox = criarBotao(containerPlayer, "Hitbox Expander: OFF", 5, function()
     state.hitboxAtivo = not state.hitboxAtivo
     btnHitbox.Text = "Hitbox Expander: " .. (state.hitboxAtivo and "ON" or "OFF")
     btnHitbox.TextColor3 = state.hitboxAtivo and CORES.Neon or CORES.Texto
-    if not state.hitboxAtivo then
-        for _, caixa in pairs(hitboxesCriadas) do if caixa and caixa.Parent then caixa:Destroy() end end
-        hitboxesCriadas = {}
-    end
+    if not state.hitboxAtivo then for _, c in pairs(hitboxesCriadas) do if c and c.Parent then c:Destroy() end end; hitboxesCriadas = {} end
 end)
-
-local btnAntiFling = criarBotaoPlayer("Anti-Fling: ON", 6, function()
+local btnAntiFling = criarBotao(containerPlayer, "Anti-Fling: ON", 6, function()
     state.antiFlingAtivo = not state.antiFlingAtivo
     btnAntiFling.Text = "Anti-Fling: " .. (state.antiFlingAtivo and "ON" or "OFF")
     btnAntiFling.TextColor3 = state.antiFlingAtivo and CORES.Neon or CORES.Texto
 end)
 
--- ================= CONTAINER FARM =================
-local containerFarm = novo("Frame", { Size = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, LayoutOrder = 2, AutomaticSize = Enum.AutomaticSize.Y, Visible = false }, conteudo)
-novo("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, containerFarm)
-
-local function criarBotaoFarm(texto, ordem, callback)
-    local btn = novo("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = CORES.Botao,
-        Text = texto, TextColor3 = CORES.Texto, Font = Enum.Font.GothamBlack, TextSize = 13, LayoutOrder = ordem,
-    }, containerFarm)
-    cantos(btn, 4)
-    btn.MouseButton1Click:Connect(callback)
-    btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(40, 40, 40) }):Play() end)
-    btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundColor3 = CORES.Botao }):Play() end)
-    return btn
-end
-
-local btnAura = criarBotaoFarm("Aura Farm: OFF", 1, function()
+-- ================= BOTÕES FARM =================
+local btnAura = criarBotao(containerFarm, "Aura Farm: OFF", 1, function()
     state.farmAtivo = not state.farmAtivo
     btnAura.Text = "Aura Farm: " .. (state.farmAtivo and "ON" or "OFF")
     btnAura.TextColor3 = state.farmAtivo and CORES.Neon or CORES.Texto
 end)
-
-local btnVoo = criarBotaoFarm("Auto Farm (Voo): OFF", 2, function()
+local btnVoo = criarBotao(containerFarm, "Auto Farm (Voo): OFF", 2, function()
     state.vooAtivo = not state.vooAtivo
     btnVoo.Text = "Auto Farm (Voo): " .. (state.vooAtivo and "ON" or "OFF")
     btnVoo.TextColor3 = state.vooAtivo and CORES.Neon or CORES.Texto
-    local char = LocalPlayer.Character
-    if char then
-        if not state.vooAtivo then
-            if bodyVelocity then bodyVelocity:Destroy(); bodyVelocity = nil end
-            for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end
-            alvoAtual = nil
-        else
-            for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
-        end
-    end
+    if not state.vooAtivo then if bodyVelocity then bodyVelocity:Destroy(); bodyVelocity = nil end; alvoAtual = nil end
 end)
 
--- CONTROLE DE VELOCIDADE
-local linhaVelo = novo("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = CORES.Botao, LayoutOrder = 3 }, containerFarm)
-cantos(linhaVelo, 4)
+local linhaVelo = novo("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = CORES.Botao, LayoutOrder = 3 }, containerFarm); cantos(linhaVelo, 4)
 local lblVelo = novo("TextLabel", { Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = "Velocidade: 25", TextColor3 = CORES.Texto, Font = Enum.Font.GothamBlack, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left }, linhaVelo)
 local btnVeloMais = novo("TextButton", { Size = UDim2.new(0, 30, 0, 26), Position = UDim2.new(1, -70, 0, 5), BackgroundColor3 = CORES.Fundo, Text = "+", TextColor3 = CORES.Neon, Font = Enum.Font.GothamBold, TextSize = 16 }, linhaVelo); cantos(btnVeloMais, 4)
 local btnVeloMenos = novo("TextButton", { Size = UDim2.new(0, 30, 0, 26), Position = UDim2.new(1, -36, 0, 5), BackgroundColor3 = CORES.Fundo, Text = "-", TextColor3 = CORES.Neon, Font = Enum.Font.GothamBold, TextSize = 16 }, linhaVelo); cantos(btnVeloMenos, 4)
-
 btnVeloMais.MouseButton1Click:Connect(function() state.veloFarm = state.veloFarm + 5; lblVelo.Text = "Velocidade: " .. state.veloFarm end)
 btnVeloMenos.MouseButton1Click:Connect(function() if state.veloFarm > 5 then state.veloFarm = state.veloFarm - 5; lblVelo.Text = "Velocidade: " .. state.veloFarm end end)
 
--- ================= LÓGICA DAS ABAS =================
+-- ================= TROCA ABAS =================
 local function resetAbas()
     btnAbaPlayer.BackgroundColor3 = CORES.Botao; btnAbaPlayer.TextColor3 = CORES.TextoOff
     btnAbaFarm.BackgroundColor3 = CORES.Botao; btnAbaFarm.TextColor3 = CORES.TextoOff
-    containerPlayer.Visible = false; containerFarm.Visible = false
+    containerPlayer.Visible, containerFarm.Visible = false, false
 end
+btnAbaPlayer.MouseButton1Click:Connect(function() resetAbas(); btnAbaPlayer.BackgroundColor3 = Color3.fromRGB(30,30,30); btnAbaPlayer.TextColor3 = CORES.Neon; containerPlayer.Visible = true end)
+btnAbaFarm.MouseButton1Click:Connect(function() resetAbas(); btnAbaFarm.BackgroundColor3 = Color3.fromRGB(30,30,30); btnAbaFarm.TextColor3 = CORES.Neon; containerFarm.Visible = true end)
+btnAbaPlayer.BackgroundColor3 = Color3.fromRGB(30,30,30); btnAbaPlayer.TextColor3 = CORES.Neon
 
-btnAbaPlayer.MouseButton1Click:Connect(function()
-    state.abaAtual = "PLAYER"; resetAbas()
-    btnAbaPlayer.BackgroundColor3 = Color3.fromRGB(30, 30, 30); btnAbaPlayer.TextColor3 = CORES.Neon
-    containerPlayer.Visible = true
-end)
-
-btnAbaFarm.MouseButton1Click:Connect(function()
-    state.abaAtual = "FARM"; resetAbas()
-    btnAbaFarm.BackgroundColor3 = Color3.fromRGB(30, 30, 30); btnAbaFarm.TextColor3 = CORES.Neon
-    containerFarm.Visible = true
-end)
-
-btnAbaPlayer.BackgroundColor3 = Color3.fromRGB(30, 30, 30); btnAbaPlayer.TextColor3 = CORES.Neon
-
--- ================= LÓGICA DO ESP =================
+-- ================= ESP =================
 local function limpar()
-    for _, hl in pairs(destaques) do if hl and hl.Parent then hl:Destroy() end end
-    destaques = {}
-    for _, bb in pairs(billboards) do if bb and bb.Parent then bb:Destroy() end end
-    billboards = {}
+    for _, hl in pairs(destaques) do if hl.Parent then hl:Destroy() end end; destaques = {}
+    for _, bb in pairs(billboards) do if bb.Parent then bb:Destroy() end end; billboards = {}
 end
-
 local function aplicar(jogador)
     if jogador == LocalPlayer then return end
-    local char = jogador.Character
-    if not char or not char:FindFirstChildOfClass("Humanoid") then return end
-    if destaques[jogador] and destaques[jogador].Parent then destaques[jogador]:Destroy() end
-    if billboards[jogador] and billboards[jogador].Parent then billboards[jogador]:Destroy() end
-    destaques[jogador] = nil; billboards[jogador] = nil
-
+    local char = jogador.Character; if not char or not char:FindFirstChildOfClass("Humanoid") then return end
+    if destaques[jogador] then destaques[jogador]:Destroy() end; if billboards[jogador] then billboards[jogador]:Destroy() end
     local papel = detectarPapel(jogador)
-    if papel == "Innocent" and not state.mostrarInnocent then return end
-    if papel == "Sheriff" and not state.mostrarSheriff then return end
-    if papel == "Murderer" and not state.mostrarMurderer then return end
-
-    local hl = Instance.new("Highlight")
-    hl.Name = "ESP_Highlight"; hl.Adornee = char; hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.FillColor = CORES[papel]; hl.OutlineColor = CORES[papel]; hl.FillTransparency = 0.6; hl.OutlineTransparency = 0
-    hl.Parent = char; destaques[jogador] = hl
-
-    if state.mostrarNomes then
-        local head = char:FindFirstChild("Head")
-        if head then
-            local bb = Instance.new("BillboardGui")
-            bb.Name = "ESP_Nome"; bb.Adornee = head; bb.Size = UDim2.new(0, 100, 0, 20); bb.StudsOffset = Vector3.new(0, 2, 0); bb.AlwaysOnTop = true; bb.Parent = head
-            local txt = Instance.new("TextLabel")
-            txt.Size = UDim2.new(1, 0, 1, 0); txt.BackgroundTransparency = 1; txt.Text = jogador.Name; txt.TextColor3 = CORES[papel]
-            txt.Font = Enum.Font.GothamBold; txt.TextSize = 10; txt.TextStrokeTransparency = 0.3; txt.TextStrokeColor3 = Color3.fromRGB(0, 0, 0); txt.Parent = bb
-            billboards[jogador] = bb
-        end
+    local hl = Instance.new("Highlight"); hl.Adornee = char; hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.FillColor = CORES[papel]; hl.OutlineColor = CORES[papel]; hl.FillTransparency = 0.6; hl.Parent = char; destaques[jogador] = hl
+    local head = char:FindFirstChild("Head")
+    if head then
+        local bb = Instance.new("BillboardGui"); bb.Adornee = head; bb.Size = UDim2.new(0,100,0,20); bb.StudsOffset = Vector3.new(0,2,0); bb.AlwaysOnTop = true; bb.Parent = head
+        local txt = Instance.new("TextLabel"); txt.Size = UDim2.new(1,0,1,0); txt.BackgroundTransparency = 1; txt.Text = jogador.Name; txt.TextColor3 = CORES[papel]; txt.Font = Enum.Font.GothamBold; txt.TextSize = 10; txt.Parent = bb
+        billboards[jogador] = bb
     end
 end
+function atualizarTudo() limpar(); if not state.espAtivo then return end; for _, j in ipairs(Players:GetPlayers()) do aplicar(j) end end
 
-function atualizarTudo()
-    limpar(); if not state.espAtivo then return end
-    for _, j in ipairs(Players:GetPlayers()) do aplicar(j) end
-end
-
--- ================= LOOPS PRINCIPAIS =================
--- Loop de ESP e God Mode
+-- ================= LOOPS =================
 task.spawn(function()
     while true do
-        task.wait(0.2)
-        if state.espAtivo then
-            for _, j in ipairs(Players:GetPlayers()) do
-                if j ~= LocalPlayer and j.Character then
-                    local hl = destaques[j]; local papelAtual = detectarPapel(j)
-                    if not hl or not hl.Parent or hl.Parent ~= j.Character or hl.FillColor ~= CORES[papelAtual] then aplicar(j) end
-                end
-            end
-        end
-        if state.godModeAtivo then
-            local char = LocalPlayer.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health < 100 then hum.Health = 100 end
-            end
-        end
-        if state.hitboxAtivo then
-            for _, j in ipairs(Players:GetPlayers()) do
-                if j ~= LocalPlayer and j.Character and detectarPapel(j) == "Murderer" then
-                    local hrp = j.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        if not hitboxesCriadas[j] or not hitboxesCriadas[j].Parent then
-                            local caixa = Instance.new("Part")
-                            caixa.Size = Vector3.new(15, 15, 15); caixa.Transparency = 0.8; caixa.Color = CORES.Murderer
-                            caixa.CanCollide = false; caixa.CanTouch = true; caixa.CanQuery = true; caixa.Massless = true; caixa.Anchored = true
-                            caixa.Parent = workspace; hitboxesCriadas[j] = caixa
-                        end
-                        hitboxesCriadas[j].CFrame = hrp.CFrame
-                    end
-                end
-            end
-        end
+        task.wait(0.5)
+        if state.espAtivo then for _, j in ipairs(Players:GetPlayers()) do if j ~= LocalPlayer then aplicar(j) end end end
+        if state.godModeAtivo then local char = LocalPlayer.Character; local hum = char and char:FindFirstChildOfClass("Humanoid"); if hum and hum.Health < 100 then hum.Health = 100 end end
+        if state.hitboxAtivo then for _, j in ipairs(Players:GetPlayers()) do if j ~= LocalPlayer and detectarPapel(j) == "Murderer" then local hrp = j.Character and j.Character:FindFirstChild("HumanoidRootPart"); if hrp then if not hitboxesCriadas[j] or not hitboxesCriadas[j].Parent then local c = Instance.new("Part"); c.Size = Vector3.new(15,15,15); c.Transparency = 0.8; c.Color = CORES.Murderer; c.CanCollide = false; c.Anchored = true; c.Parent = workspace; hitboxesCriadas[j] = c end; hitboxesCriadas[j].CFrame = hrp.CFrame end end end end
+        if state.antiFlingAtivo then for _, j in ipairs(Players:GetPlayers()) do if j ~= LocalPlayer and j.Character then for _, p in ipairs(j.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end end end
     end
 end)
 
--- Loop de Noclip
 RunService.Stepped:Connect(function()
-    if state.noclipAtivo then
-        local char = LocalPlayer.Character
-        if char then
-            for _, parte in ipairs(char:GetDescendants()) do
-                if parte:IsA("BasePart") then parte.CanCollide = false end
-            end
-        end
-    end
+    if state.noclipAtivo then local char = LocalPlayer.Character; if char then for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end end
 end)
 
--- Loop de Aura
 task.spawn(function()
     while true do
-        task.wait(0.2)
-        if state.farmAtivo then
-            local char = LocalPlayer.Character
-            if char then
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    local partsInRadius = workspace:GetPartBoundsInRadius(hrp.Position, RAIO_AURA)
-                    for _, item in ipairs(partsInRadius) do
-                        if item.Parent and nomeNaLista(item.Name, NOMES_FARM) then
-                            firetouchinterest(item, hrp, 0); firetouchinterest(item, hrp, 1)
-                        end
-                    end
-                end
-            end
-        end
+        task.wait(0.5)
+        if state.farmAtivo then local char = LocalPlayer.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart"); if hrp then local parts = workspace:GetPartBoundsInRadius(hrp.Position, RAIO_AURA); for _, item in ipairs(parts) do if item.Parent and nomeNaLista(item.Name, NOMES_FARM) then firetouchinterest(item, hrp, 0); firetouchinterest(item, hrp, 1) end end end end
     end
 end)
 
--- ================= AUTO FARM (CACHE INTELIGENTE) =================
--- 1. Atualiza a lista de doces no mapa a cada 1 segundo (em segundo plano, sem travar)
+-- ================= AUTO FARM OTIMIZADO (FIM DO LAG) =================
 task.spawn(function()
     while true do
         task.wait(1)
         if state.vooAtivo then
             local lista = {}
-            -- Busca apenas pastas de primeiro nível (como workspace.Candies)
             for _, obj in ipairs(workspace:GetChildren()) do
-                if obj:IsA("BasePart") and nomeNaLista(obj.Name, NOMES_FARM) then
-                    table.insert(lista, obj)
-                else
-                    -- Se for uma pasta, procura os doces dentro dela
-                    for _, sub in ipairs(obj:GetChildren()) do
-                        if sub:IsA("BasePart") and nomeNaLista(sub.Name, NOMES_FARM) then
-                            table.insert(lista, sub)
-                        end
-                    end
-                end
+                if obj:IsA("BasePart") and nomeNaLista(obj.Name, NOMES_FARM) then table.insert(lista, obj) else for _, sub in ipairs(obj:GetChildren()) do if sub:IsA("BasePart") and nomeNaLista(sub.Name, NOMES_FARM) then table.insert(lista, sub) end end end
             end
             cacheItensFarm = lista
         end
     end
 end)
 
--- 2. Loop do voo (roda a cada frame, mas usa a lista rápida)
 RunService.Heartbeat:Connect(function()
     if not state.vooAtivo then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    local char = LocalPlayer.Character; if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart"); local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
-
-    -- Força NoClip no personagem para voar
     for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
-
-    -- Se o alvo sumiu (foi coletado), zera
-    if alvoAtual and not alvoAtual.Parent then
-        alvoAtual = nil
-        if bodyVelocity then bodyVelocity.Velocity = Vector3.new(0, 0, 0) end
-    end
-
-    -- Encontra o doce mais próximo do cache
+    if alvoAtual and not alvoAtual.Parent then alvoAtual = nil end
     if not alvoAtual then
-        local menorDist = math.huge
-        for _, obj in ipairs(cacheItensFarm) do
-            if obj and obj.Parent then
-                local dist = (obj.Position - hrp.Position).Magnitude
-                if dist < menorDist then menorDist = dist; alvoAtual = obj end
-            end
-        end
+        local menor = math.huge
+        for _, obj in ipairs(cacheItensFarm) do if obj and obj.Parent then local d = (obj.Position - hrp.Position).Magnitude; if d < menor then menor = d; alvoAtual = obj end end end
     end
-
     if alvoAtual then
         local dist = (alvoAtual.Position - hrp.Position).Magnitude
-        -- Se estiver MUITO perto (menos de 5 studs), coleta e MANTÉM a velocidade para não parar
-        if dist < 5 then
-            firetouchinterest(alvoAtual, hrp, 0)
-            firetouchinterest(alvoAtual, hrp, 1)
-            alvoAtual = nil -- Zera para pegar o próximo doce imediatamente
-            
-            -- Não zera a velocidade para ele não parar no ar. Apenas procura o próximo no próximo frame.
+        if dist < 4 then firetouchinterest(alvoAtual, hrp, 0); firetouchinterest(alvoAtual, hrp, 1); alvoAtual = nil
         else
-            if not bodyVelocity or not bodyVelocity.Parent then
-                bodyVelocity = Instance.new("BodyVelocity")
-                bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bodyVelocity.Parent = hrp
-            end
-            -- Desliza até o doce
-            local direcao = (alvoAtual.Position - hrp.Position).Unit
-            bodyVelocity.Velocity = direcao * state.veloFarm
-            -- Mantém o personagem em pé
+            if not bodyVelocity or not bodyVelocity.Parent then bodyVelocity = Instance.new("BodyVelocity"); bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge); bodyVelocity.Parent = hrp end
+            bodyVelocity.Velocity = (alvoAtual.Position - hrp.Position).Unit * state.veloFarm
             hum.PlatformStand = false
         end
     else
-        -- Se não tem alvo, apenas pare (mas não trava o char)
         if bodyVelocity then bodyVelocity.Velocity = Vector3.new(0, 0, 0) end
     end
 end)
 
-Players.PlayerRemoving:Connect(function(j)
-    if hitboxesCriadas[j] then if hitboxesCriadas[j].Parent then hitboxesCriadas[j]:Destroy() end; hitboxesCriadas[j] = nil end
-    if destaques[j] then destaques[j]:Destroy(); destaques[j] = nil end
-    if billboards[j] then billboards[j]:Destroy(); billboards[j] = nil end
-end)
-
 -- ================= BOTÃO SHOOT =================
-local btnShoot = novo("TextButton", {
-    Size = UDim2.new(0, 100, 0, 50), Position = UDim2.new(1, -120, 0.5, 0),
-    BackgroundColor3 = Color3.fromRGB(255, 255, 255), Text = "SHOOT",
-    TextColor3 = CORES.Fundo, Font = Enum.Font.GothamBlack, TextSize = 20, Visible = false
-}, screenGui)
-cantos(btnShoot, 6)
-stroke(btnShoot, CORES.Neon, 0.5)
+local btnShoot = novo("TextButton", { Size = UDim2.new(0, 100, 0, 50), Position = UDim2.new(1, -120, 0.5, 0), BackgroundColor3 = Color3.fromRGB(255, 255, 255), Text = "SHOOT", TextColor3 = CORES.Fundo, Font = Enum.Font.GothamBlack, TextSize = 20, Visible = false }, screenGui)
+cantos(btnShoot, 6); stroke(btnShoot, CORES.Neon, 0.5)
 
 btnShoot.MouseButton1Click:Connect(function()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local tool = char:FindFirstChildOfClass("Tool")
-    if not tool or not nomeNaLista(tool.Name, NOMES_ARMA) then
-        btnShoot.Text = "SEM ARMA"; task.wait(0.5); btnShoot.Text = "SHOOT" return
-    end
-    local alvo, menorDist, hrp = nil, 9999, char:FindFirstChild("HumanoidRootPart")
-    for _, j in ipairs(Players:GetPlayers()) do
-        if j ~= LocalPlayer and j.Character and detectarPapel(j) == "Murderer" then
-            local alvoHrp = j.Character:FindFirstChild("HumanoidRootPart")
-            if alvoHrp and hrp then
-                local dist = (alvoHrp.Position - hrp.Position).Magnitude
-                if dist < menorDist then menorDist = dist; alvo = alvoHrp end
-            end
-        end
-    end
-    if alvo then
-        local camera = workspace.CurrentCamera
-        local cfOriginal = camera.CFrame
-        camera.CFrame = CFrame.new(cfOriginal.Position, alvo.Position)
-        local centerPos = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-        VirtualInputManager:SendMouseButtonEvent(centerPos.X, centerPos.Y, 0, true, game, 1)
-        tool:Activate()
-        VirtualInputManager:SendMouseButtonEvent(centerPos.X, centerPos.Y, 0, false, game, 1)
-        task.defer(function() task.wait(0.1); camera.CFrame = cfOriginal end)
-        btnShoot.Text = "TIROU!"; task.wait(0.2); btnShoot.Text = "SHOOT"
-    else
-        btnShoot.Text = "SEM ALVO"; task.wait(0.5); btnShoot.Text = "SHOOT"
-    end
+    local char = LocalPlayer.Character; if not char then return end
+    local tool = char:FindFirstChildOfClass("Tool"); if not tool or not nomeNaLista(tool.Name, NOMES_ARMA) then btnShoot.Text = "SEM ARMA"; task.wait(0.5); btnShoot.Text = "SHOOT" return end
+    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    local camera = workspace.CurrentCamera
+    local alvo, melhorDist = nil, math.huge
+    for _, j in ipairs(Players:GetPlayers()) do if j ~= LocalPlayer and detectarPapel(j) == "Murderer" then local a = j.Character and j.Character:FindFirstChild("HumanoidRootPart"); if a then local d = (a.Position - hrp.Position).Magnitude; if d < melhorDist then melhorDist = d; alvo = a end end end end
+    if not alvo then btnShoot.Text = "SEM ALVO"; task.wait(0.5); btnShoot.Text = "SHOOT" return end
+    local posTela, onScreen = camera:WorldToViewportPoint(alvo.Position)
+    if not onScreen then local centro = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2); local dir = (Vector2.new(posTela.X, posTela.Y) - centro); if dir.Magnitude > 0 then local edge = centro + dir.Unit * math.min(camera.ViewportSize.X, camera.ViewportSize.Y) * 0.4; posTela = Vector3.new(edge.X, edge.Y, posTela.Z) end end
+    local screenX = math.clamp(posTela.X, 1, camera.ViewportSize.X - 1); local screenY = math.clamp(posTela.Y, 1, camera.ViewportSize.Y - 1)
+    pcall(function() tool:Activate() end)
+    VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, true, game, 1); VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, false, game, 1)
+    btnShoot.Text = "TIROU!"; task.wait(0.2); btnShoot.Text = "SHOOT"
 end)
 
-local btnToggleShoot = criarBotaoPlayer("Mostrar Botão SHOOT", 7, function()
-    btnShoot.Visible = not btnShoot.Visible
-    btnToggleShoot.Text = btnShoot.Visible and "Esconder Botão SHOOT" or "Mostrar Botão SHOOT"
-end)
+local btnToggleShoot = criarBotao(containerPlayer, "Mostrar Botão SHOOT", 7, function() btnShoot.Visible = not btnShoot.Visible; btnToggleShoot.Text = btnShoot.Visible and "Esconder Botão SHOOT" or "Mostrar Botão SHOOT" end)
 
-print("[Justiceiro] Painel Premium carregado com sucesso.")
+print("[Justiceiro] Painel carregado sem lag.")
