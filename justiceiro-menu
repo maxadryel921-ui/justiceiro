@@ -1,8 +1,8 @@
 --[[
-    Justiceiro Menu - VERSÃO PREMIUM
-    - Visual escuro com detalhes neon
-    - Invisible, Shoot sem travar, Hitbox, Auto Farm (Voo em pé), Aura, Noclip e God Mode
-    - Sistema de arrastar e minimizar
+    Justiceiro Menu - VERSÃO PREMIUM (CORRIGIDA)
+    - UI atualizando cores ON/OFF corretamente
+    - Auto Farm deslizando sem parar (Cache de itens)
+    - Personagem fica em pé enquanto voa
 ]]
 
 local Players = game:GetService("Players")
@@ -53,6 +53,7 @@ local billboards = {}
 local hitboxesCriadas = {}
 local alvoAtual = nil
 local bodyVelocity = nil
+local cacheItensFarm = {} -- Tabela para guardar os doces (evita travar)
 
 -- ================= HELPERS =================
 local function novo(classe, props, parent)
@@ -201,7 +202,6 @@ local function criarBotaoPlayer(texto, ordem, callback)
     }, containerPlayer)
     cantos(btn, 4)
     btn.MouseButton1Click:Connect(callback)
-    -- Animação de hover
     btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(40, 40, 40) }):Play() end)
     btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundColor3 = CORES.Botao }):Play() end)
     return btn
@@ -324,7 +324,6 @@ btnAbaFarm.MouseButton1Click:Connect(function()
     containerFarm.Visible = true
 end)
 
--- Define a aba inicial
 btnAbaPlayer.BackgroundColor3 = Color3.fromRGB(30, 30, 30); btnAbaPlayer.TextColor3 = CORES.Neon
 
 -- ================= LÓGICA DO ESP =================
@@ -443,50 +442,84 @@ task.spawn(function()
     end
 end)
 
--- Loop do Auto Farm (Voo)
+-- ================= AUTO FARM (CACHE INTELIGENTE) =================
+-- 1. Atualiza a lista de doces no mapa a cada 1 segundo (em segundo plano, sem travar)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if state.vooAtivo then
+            local lista = {}
+            -- Busca apenas pastas de primeiro nível (como workspace.Candies)
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj:IsA("BasePart") and nomeNaLista(obj.Name, NOMES_FARM) then
+                    table.insert(lista, obj)
+                else
+                    -- Se for uma pasta, procura os doces dentro dela
+                    for _, sub in ipairs(obj:GetChildren()) do
+                        if sub:IsA("BasePart") and nomeNaLista(sub.Name, NOMES_FARM) then
+                            table.insert(lista, sub)
+                        end
+                    end
+                end
+            end
+            cacheItensFarm = lista
+        end
+    end
+end)
+
+-- 2. Loop do voo (roda a cada frame, mas usa a lista rápida)
 RunService.Heartbeat:Connect(function()
-    if state.vooAtivo then
-        local char = LocalPlayer.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hrp or not hum then return end
+    if not state.vooAtivo then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
 
-        for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
+    -- Força NoClip no personagem para voar
+    for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
 
-        if alvoAtual and not alvoAtual.Parent then
-            alvoAtual = nil; if bodyVelocity then bodyVelocity.Velocity = Vector3.new(0, 0, 0) end
-        end
+    -- Se o alvo sumiu (foi coletado), zera
+    if alvoAtual and not alvoAtual.Parent then
+        alvoAtual = nil
+        if bodyVelocity then bodyVelocity.Velocity = Vector3.new(0, 0, 0) end
+    end
 
-        if not alvoAtual then
-            local menorDist = 9999
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart") and obj.Parent and nomeNaLista(obj.Name, NOMES_FARM) then
-                    local dist = (obj.Position - hrp.Position).Magnitude
-                    if dist < menorDist then menorDist = dist; alvoAtual = obj end
-                end
+    -- Encontra o doce mais próximo do cache
+    if not alvoAtual then
+        local menorDist = math.huge
+        for _, obj in ipairs(cacheItensFarm) do
+            if obj and obj.Parent then
+                local dist = (obj.Position - hrp.Position).Magnitude
+                if dist < menorDist then menorDist = dist; alvoAtual = obj end
             end
         end
+    end
 
-        if alvoAtual then
-            local dist = (alvoAtual.Position - hrp.Position).Magnitude
-            if dist < 5 then
-                firetouchinterest(alvoAtual, hrp, 0); firetouchinterest(alvoAtual, hrp, 1)
-                alvoAtual = nil; if bodyVelocity then bodyVelocity.Velocity = Vector3.new(0, 0, 0) end
-                task.wait(0.1)
-            else
-                if not bodyVelocity or not bodyVelocity.Parent then
-                    bodyVelocity = Instance.new("BodyVelocity")
-                    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    bodyVelocity.Parent = hrp
-                end
-                local direcao = (alvoAtual.Position - hrp.Position).Unit
-                bodyVelocity.Velocity = direcao * state.veloFarm
-                hum.PlatformStand = false; hum:ChangeState(Enum.HumanoidStateType.Physics)
-            end
+    if alvoAtual then
+        local dist = (alvoAtual.Position - hrp.Position).Magnitude
+        -- Se estiver MUITO perto (menos de 5 studs), coleta e MANTÉM a velocidade para não parar
+        if dist < 5 then
+            firetouchinterest(alvoAtual, hrp, 0)
+            firetouchinterest(alvoAtual, hrp, 1)
+            alvoAtual = nil -- Zera para pegar o próximo doce imediatamente
+            
+            -- Não zera a velocidade para ele não parar no ar. Apenas procura o próximo no próximo frame.
         else
-            if bodyVelocity then bodyVelocity.Velocity = Vector3.new(0, 0, 0) end
+            if not bodyVelocity or not bodyVelocity.Parent then
+                bodyVelocity = Instance.new("BodyVelocity")
+                bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bodyVelocity.Parent = hrp
+            end
+            -- Desliza até o doce
+            local direcao = (alvoAtual.Position - hrp.Position).Unit
+            bodyVelocity.Velocity = direcao * state.veloFarm
+            -- Mantém o personagem em pé
+            hum.PlatformStand = false
         end
+    else
+        -- Se não tem alvo, apenas pare (mas não trava o char)
+        if bodyVelocity then bodyVelocity.Velocity = Vector3.new(0, 0, 0) end
     end
 end)
 
@@ -537,7 +570,6 @@ btnShoot.MouseButton1Click:Connect(function()
     end
 end)
 
--- Botão para mostrar/esconder o SHOOT
 local btnToggleShoot = criarBotaoPlayer("Mostrar Botão SHOOT", 7, function()
     btnShoot.Visible = not btnShoot.Visible
     btnToggleShoot.Text = btnShoot.Visible and "Esconder Botão SHOOT" or "Mostrar Botão SHOOT"
